@@ -60,23 +60,23 @@ Outpost Managed Agents splits the agent's logic ("brain") from its execution env
    ```bash
    git clone https://github.com/joao-aires/outpost-managed-agents.git
    cd outpost-managed-agents
-   python3 -m venv .venv
+   uv venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+   uv pip install -r requirements.txt
    ```
 
 2. **Configure your Environment**:
    Create a `.env` file in the root:
    ```env
    ANTHROPIC_API_KEY=your-api-key-here
-   DATABASE_URL=sqlite+aiosqlite:///./outpost_managed_agents.db
+   DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/outpost
    KUBERNETES_NAMESPACE=agent-sandboxes
    WARM_POOL_SIZE=3
    ```
 
 3. **Run the FastAPI Server**:
    ```bash
-   uvicorn app.main:app --reload --port 8000
+   uv run uvicorn app.main:app --reload --port 8000
    ```
 
 4. **Access the Console**:

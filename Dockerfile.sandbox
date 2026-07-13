@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the precompiled ant CLI binary from the go builder
 COPY --from=go-builder /go/bin/ant /usr/local/bin/ant
 
+# Copy uv binary for rapid package installation inside sandbox
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # Create non-root agent user and setting up directory permissions
 RUN groupadd -g 1000 agent && \
     useradd -u 1000 -g agent -m -s /bin/bash agent
