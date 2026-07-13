@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
     # Kubernetes Configuration
+    SANDBOX_DRIVER: str = os.getenv("SANDBOX_DRIVER", "direct") # direct, sigs-sandbox, or mock
     KUBERNETES_NAMESPACE: str = os.getenv("KUBERNETES_NAMESPACE", "agent-sandboxes")
     SANDBOX_IMAGE: str = os.getenv("SANDBOX_IMAGE", "ubuntu:22.04")
     WARM_POOL_SIZE: int = int(os.getenv("WARM_POOL_SIZE", "3"))

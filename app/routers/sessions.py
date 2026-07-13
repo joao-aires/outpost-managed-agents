@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.session import Session
 from app.models.agent import Agent
 from app.services.orchestrator import agent_orchestrator
-from app.services.kubernetes import sandbox_client
+from app.services.sandbox import sandbox_driver
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -140,7 +140,7 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
     
     # Clean up Kubernetes sandbox Pod if exists
     if session.pod_name:
-        await sandbox_client.delete_sandbox_pod(session.pod_name)
+        await sandbox_driver.delete_sandbox(session.pod_name)
         
     await db.delete(session)
     return None

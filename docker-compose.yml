@@ -9,17 +9,33 @@ services:
       - "8000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=sqlite+aiosqlite:///./outpost_managed_agents.db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/outpost
       - REDIS_URL=redis://redis:6379/0
       - KUBERNETES_NAMESPACE=agent-sandboxes
       - SANDBOX_IMAGE=ubuntu:22.04
       - WARM_POOL_SIZE=3
+      - SANDBOX_DRIVER=direct
     volumes:
       - ./app:/workspace/app
     depends_on:
+      - db
       - redis
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=outpost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+volumes:
+  postgres_data:

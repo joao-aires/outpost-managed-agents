@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Header, BackgroundTasks, status
 from pydantic import BaseModel
 
-from app.services.kubernetes import sandbox_client
+from app.services.sandbox import sandbox_driver
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = logging.getLogger("outpost_cma.webhooks")
@@ -48,7 +48,7 @@ async def run_anthropic_worker_task(session_id: str, environment_id: str, enviro
     try:
         logger.info(f"Provisioning sandbox pod {pod_name} for Anthropic session {session_id}...")
         # Create Pod
-        actual_pod_name = await sandbox_client.create_sandbox_pod(session_id)
+        actual_pod_name = await sandbox_driver.create_sandbox(session_id)
         
         # Inject the Environment key and run the worker command inside the sandbox pod.
         # Anthropic CLI tool client connects to the Anthropic work queue.
@@ -60,7 +60,7 @@ async def run_anthropic_worker_task(session_id: str, environment_id: str, enviro
         )
         
         logger.info(f"Starting Anthropic worker inside Pod {actual_pod_name}...")
-        result = await sandbox_client.execute_command(actual_pod_name, cmd)
+        result = await sandbox_driver.execute_command(actual_pod_name, cmd)
         logger.info(f"Anthropic worker execution completed. stdout: {result['stdout']}, exit_code: {result['exit_code']}")
         
     except Exception as e:
@@ -68,7 +68,7 @@ async def run_anthropic_worker_task(session_id: str, environment_id: str, enviro
     finally:
         # Tear down sandbox pod once worker has completed or failed
         logger.info(f"Cleaning up sandbox pod {pod_name}...")
-        await sandbox_client.delete_sandbox_pod(pod_name)
+        await sandbox_driver.delete_sandbox(pod_name)
 
 @router.post("/anthropic")
 async def anthropic_webhook(

@@ -9,7 +9,7 @@ from anthropic import AsyncAnthropic, APIError
 from app.config import settings
 from app.models.agent import Agent
 from app.models.session import Session
-from app.services.kubernetes import sandbox_client
+from app.services.sandbox import sandbox_driver
 
 logger = logging.getLogger("outpost_cma.orchestrator")
 
@@ -75,7 +75,7 @@ class AgentOrchestrator:
             await session_bus.publish(session_id, "session.status_change", {"status": "provisioning"})
             
             try:
-                pod_name = await sandbox_client.create_sandbox_pod(session_id)
+                pod_name = await sandbox_driver.create_sandbox(session_id)
                 session.pod_name = pod_name
                 session.status = "running"
                 await db.commit()
@@ -229,16 +229,16 @@ class AgentOrchestrator:
                     try:
                         if tool_name == "bash":
                             cmd = tool_input.get("command")
-                            exec_res = await sandbox_client.execute_command(pod_name, cmd)
+                            exec_res = await sandbox_driver.execute_command(pod_name, cmd)
                             result_text = f"stdout:\n{exec_res['stdout']}\nstderr:\n{exec_res['stderr']}\nexit_code: {exec_res['exit_code']}"
                         elif tool_name == "write_file":
                             path = tool_input.get("path")
                             content = tool_input.get("content", "")
-                            success = await sandbox_client.write_file(pod_name, path, content.encode("utf-8"))
+                            success = await sandbox_driver.write_file(pod_name, path, content.encode("utf-8"))
                             result_text = "File successfully written." if success else "Failed to write file."
                         elif tool_name == "read_file":
                             path = tool_input.get("path")
-                            file_content = await sandbox_client.read_file(pod_name, path)
+                            file_content = await sandbox_driver.read_file(pod_name, path)
                             result_text = file_content.decode("utf-8", errors="replace")
                         else:
                             # Catch custom registered tools or placeholders

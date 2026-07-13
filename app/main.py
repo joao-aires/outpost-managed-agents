@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import engine, Base
 from app.routers import agents, sessions, webhooks
-from app.services.kubernetes import sandbox_client
+from app.services.sandbox import sandbox_driver
 
 # Configure Logging
 logging.basicConfig(
@@ -47,7 +47,7 @@ async def warm_pool_reconciler_loop():
     logger.info("Starting Kubernetes warm pod pool reconciliation loop...")
     while True:
         try:
-            await sandbox_client.reconcile_warm_pool()
+            await sandbox_driver.reconcile_warm_pool()
         except Exception as e:
             logger.error(f"Error in warm pool reconciler loop: {e}")
         await asyncio.sleep(30) # check pool status every 30 seconds
@@ -62,7 +62,7 @@ async def startup_event():
 
     # 2. Initialize Kubernetes client
     logger.info("Initializing Kubernetes sandbox client...")
-    await sandbox_client.initialize()
+    await sandbox_driver.initialize()
 
     # 3. Spawn warm pool reconciler in background
     asyncio.create_task(warm_pool_reconciler_loop())
@@ -72,5 +72,5 @@ def read_root():
     return {
         "project": settings.PROJECT_NAME,
         "status": "healthy",
-        "kubernetes_mode": "mock" if not sandbox_client.v1 else "active"
+        "kubernetes_mode": settings.SANDBOX_DRIVER
     }
