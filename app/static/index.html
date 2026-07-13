@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeCMA Console - Kubernetes Claude Managed Agents</title>
+    <link rel="stylesheet" href="/ui/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-cubes"></i>
+                    <span>KubeCMA</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#agents" class="nav-item" data-tab="agents">
+                    <i class="fa-solid fa-robot"></i>
+                    <span>Agents</span>
+                </a>
+                <a href="#sessions" class="nav-item" data-tab="sessions">
+                    <i class="fa-solid fa-terminal"></i>
+                    <span>Sessions</span>
+                </a>
+                <a href="#settings" class="nav-item" data-tab="settings">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Configuration</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="system-status">
+                    <span class="status-indicator online"></span>
+                    <span id="k8s-mode-status">Mock K8s Mode</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Navbar -->
+            <header class="top-nav">
+                <div class="page-title">
+                    <h1 id="tab-title">Dashboard</h1>
+                </div>
+                <div class="user-profile">
+                    <div class="theme-toggle" id="theme-toggle">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Tab Contents -->
+            <div class="content-body">
+                <!-- Dashboard Section -->
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon purple">
+                                <i class="fa-solid fa-play"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Active Sessions</h3>
+                                <p id="stat-active-sessions">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">
+                                <i class="fa-solid fa-box-open"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Warm Pods</h3>
+                                <p id="stat-warm-pods">3</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon blue">
+                                <i class="fa-solid fa-bolt"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Total Runs</h3>
+                                <p id="stat-total-runs">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon red">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Egress Blocked</h3>
+                                <p id="stat-egress-blocks">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-details">
+                        <!-- Pod Monitor -->
+                        <div class="detail-panel">
+                            <h2>Sandbox Cluster Resources</h2>
+                            <div class="resource-gauges">
+                                <div class="gauge-container">
+                                    <div class="gauge">
+                                        <svg viewBox="0 0 36 36" class="circular-chart purple">
+                                            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <path class="circle" stroke-dasharray="12, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <text x="18" y="20.35" class="percentage">12%</text>
+                                        </svg>
+                                    </div>
+                                    <h4>Aggregated CPU</h4>
+                                </div>
+                                <div class="gauge-container">
+                                    <div class="gauge">
+                                        <svg viewBox="0 0 36 36" class="circular-chart green">
+                                            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <path class="circle" stroke-dasharray="25, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <text x="18" y="20.35" class="percentage">25%</text>
+                                        </svg>
+                                    </div>
+                                    <h4>Aggregated Memory</h4>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Runs -->
+                        <div class="detail-panel">
+                            <h2>Recent Activity</h2>
+                            <div class="activity-list" id="dashboard-activity">
+                                <div class="no-data">No recent session executions found.</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Agents Section -->
+                <section id="tab-agents" class="tab-pane">
+                    <div class="action-header">
+                        <h2>Agent Definitions</h2>
+                        <button class="btn btn-primary" id="btn-create-agent-modal">
+                            <i class="fa-solid fa-plus"></i> New Agent
+                        </button>
+                    </div>
+
+                    <div class="agents-grid" id="agents-list">
+                        <!-- Loaded via JS -->
+                    </div>
+                </section>
+
+                <!-- Sessions Section -->
+                <section id="tab-sessions" class="tab-pane">
+                    <div class="sessions-layout">
+                        <!-- Left Panel: Session List -->
+                        <div class="sessions-list-panel">
+                            <div class="panel-header">
+                                <h3>Active Sessions</h3>
+                                <button class="btn btn-secondary btn-sm" id="btn-create-session-modal">
+                                    <i class="fa-solid fa-plus"></i> Start Session
+                                </button>
+                            </div>
+                            <div class="sessions-list" id="sessions-list-container">
+                                <!-- Loaded via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Live Terminal Console -->
+                        <div class="session-console-panel">
+                            <div class="console-header">
+                                <div class="console-title">
+                                    <span id="active-session-title">No Session Selected</span>
+                                    <span class="badge" id="active-session-badge"></span>
+                                </div>
+                                <div class="console-actions">
+                                    <button class="btn btn-danger btn-sm" id="btn-terminate-session" disabled>
+                                        <i class="fa-solid fa-circle-stop"></i> Terminate
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="console-body" id="console-output">
+                                <div class="console-welcome">
+                                    <i class="fa-solid fa-terminal"></i>
+                                    <h3>Select an active session from the left to open the execution terminal stream.</h3>
+                                </div>
+                            </div>
+                            <div class="console-input-area">
+                                <input type="text" id="console-input" placeholder="Type prompt or message for the agent..." disabled>
+                                <button class="btn btn-primary" id="btn-send-message" disabled>
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section id="tab-settings" class="tab-pane">
+                    <div class="settings-container">
+                        <div class="settings-card">
+                            <h2>Infrastructure Parameters</h2>
+                            <div class="settings-form">
+                                <div class="form-group">
+                                    <label>Kubernetes Namespace</label>
+                                    <input type="text" value="agent-sandboxes" readonly class="form-control-readonly">
+                                </div>
+                                <div class="form-group">
+                                    <label>Sandbox Pod Docker Image</label>
+                                    <input type="text" value="ubuntu:22.04" readonly class="form-control-readonly">
+                                </div>
+                                <div class="form-group">
+                                    <label>Egress Domain Proxy Policy</label>
+                                    <textarea readonly class="form-control-readonly" rows="3">api.github.com, github.com, pypi.org, files.pythonhosted.org</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Create Agent Modal -->
+    <div class="modal-overlay" id="agent-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Create Agent Configuration</h3>
+                <span class="modal-close" id="btn-close-agent-modal">&times;</span>
+            </div>
+            <form id="create-agent-form">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="agent-name">Agent Name</label>
+                        <input type="text" id="agent-name" required placeholder="e.g. Kubernetes Cluster Admin">
+                    </div>
+                    <div class="form-group">
+                        <label for="agent-model">Claude Model</label>
+                        <select id="agent-model">
+                            <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
+                            <option value="claude-3-opus-latest">Claude 3 Opus</option>
+                            <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="agent-system">System Prompt</label>
+                        <textarea id="agent-system" rows="4" placeholder="Instruction set defining persona and limitations..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-agent">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Agent</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Session Modal -->
+    <div class="modal-overlay" id="session-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Start New Session</h3>
+                <span class="modal-close" id="btn-close-session-modal">&times;</span>
+            </div>
+            <form id="create-session-form">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="session-agent-select">Select Agent</label>
+                        <select id="session-agent-select" required>
+                            <!-- Options filled via JS -->
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-session">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Launch Sandbox</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/ui/app.js"></script>
+</body>
+</html>

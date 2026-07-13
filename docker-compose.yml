@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=sqlite+aiosqlite:///./kube_managed_agents.db
+      - REDIS_URL=redis://redis:6379/0
+      - KUBERNETES_NAMESPACE=agent-sandboxes
+      - SANDBOX_IMAGE=ubuntu:22.04
+      - WARM_POOL_SIZE=3
+    volumes:
+      - ./app:/workspace/app
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
