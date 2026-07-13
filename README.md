@@ -1,12 +1,12 @@
-# KubeCMA: Kubernetes Claude Managed Agents Backend
+# Outpost Managed Agents: Kubernetes Execution & Orchestration Backend
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 
-**KubeCMA** is a production-grade, open-source execution backend and standalone orchestrator for **Claude Managed Agents** designed specifically for **Kubernetes** infrastructures.
+**Outpost Managed Agents** is a production-grade, open-source execution backend and standalone orchestrator for **Claude Managed Agents** designed specifically for **Kubernetes** infrastructures.
 
-Instead of running agent code execution, bash tools, and file operations in proprietary, edge-locked environments, KubeCMA lets you deploy isolated, resource-constrained sandbox containers right inside your own Kubernetes cluster.
+Instead of running agent code execution, bash tools, and file operations in proprietary, edge-locked environments, Outpost Managed Agents lets you deploy isolated, resource-constrained sandbox containers right inside your own Kubernetes cluster.
 
 ---
 
@@ -24,7 +24,7 @@ Instead of running agent code execution, bash tools, and file operations in prop
 
 ## 📐 Architecture Overview
 
-KubeCMA splits the agent's logic ("brain") from its execution environment ("hands"):
+Outpost Managed Agents splits the agent's logic ("brain") from its execution environment ("hands"):
 
 ```
                          [ CLIENT APPLICATION / SDK ]
@@ -32,7 +32,7 @@ KubeCMA splits the agent's logic ("brain") from its execution environment ("hand
                       /v1/agents      |      /v1/sessions
                                       v
                        +-----------------------------+
-                       |    KubeCMA Control Plane    |
+                       |    Outpost Control Plane    |
                        |       (FastAPI Engine)      |
                        +-----------------------------+
                           /                   \
@@ -52,14 +52,14 @@ KubeCMA splits the agent's logic ("brain") from its execution environment ("hand
 ### Prerequisites
 *   Python 3.11+
 *   Docker & Docker Compose
-*   (Optional) A Kubernetes cluster context (`kubeconfig` or in-cluster access). If no cluster is found, KubeCMA falls back to **Local Mock Mode** for seamless local testing.
+*   (Optional) A Kubernetes cluster context (`kubeconfig` or in-cluster access). If no cluster is found, Outpost Managed Agents falls back to **Local Mock Mode** for seamless local testing.
 
 ### Local Development
 
 1. **Clone the repository and install dependencies**:
    ```bash
-   git clone https://github.com/joao-aires/kube-managed-agents.git
-   cd kube-managed-agents
+   git clone https://github.com/joao-aires/outpost-managed-agents.git
+   cd outpost-managed-agents
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
@@ -69,7 +69,7 @@ KubeCMA splits the agent's logic ("brain") from its execution environment ("hand
    Create a `.env` file in the root:
    ```env
    ANTHROPIC_API_KEY=your-api-key-here
-   DATABASE_URL=sqlite+aiosqlite:///./kube_managed_agents.db
+   DATABASE_URL=sqlite+aiosqlite:///./outpost_managed_agents.db
    KUBERNETES_NAMESPACE=agent-sandboxes
    WARM_POOL_SIZE=3
    ```
@@ -85,7 +85,7 @@ KubeCMA splits the agent's logic ("brain") from its execution environment ("hand
    *   Redoc docs are available at `/redoc`.
 
 ### Running with Docker Compose
-To spin up KubeCMA along with Redis:
+To spin up Outpost Managed Agents along with Redis:
 ```bash
 docker-compose up --build
 ```
@@ -94,7 +94,7 @@ docker-compose up --build
 
 ## 📡 REST API Reference
 
-KubeCMA exposes Anthropic-compatible endpoints. Set the `base_url` in your Anthropic SDK initialization to point to your KubeCMA deployment.
+Outpost Managed Agents exposes Anthropic-compatible endpoints. Set the `base_url` in your Anthropic SDK initialization to point to your Outpost Managed Agents deployment.
 
 ### Agents
 *   `POST /v1/agents` - Define a new agent.

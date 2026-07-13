@@ -5,7 +5,7 @@ import uuid
 from typing import Dict, List, Optional
 from app.config import settings
 
-logger = logging.getLogger("kube_cma.kubernetes")
+logger = logging.getLogger("outpost_cma.kubernetes")
 
 # Attempt to load kubernetes asyncio SDK
 try:
@@ -86,9 +86,9 @@ class KubeSandboxClient:
             metadata=client.V1ObjectMeta(
                 name=pod_name,
                 labels={
-                    "app.kubernetes.io/managed-by": "kube-cma",
-                    "kube-cma/role": "sandbox",
-                    "kube-cma/session-id": session_id,
+                    "app.kubernetes.io/managed-by": "outpost-cma",
+                    "outpost-cma/role": "sandbox",
+                    "outpost-cma/session-id": session_id,
                 }
             ),
             spec=client.V1PodSpec(
@@ -231,7 +231,7 @@ class KubeSandboxClient:
             # List pods in pool
             pods = await self.v1.list_namespaced_pod(
                 namespace=self.namespace,
-                label_selector="kube-cma/role=warm-pool"
+                label_selector="outpost-cma/role=warm-pool"
             )
             if not pods.items:
                 return None
@@ -244,8 +244,8 @@ class KubeSandboxClient:
             patch = {
                 "metadata": {
                     "labels": {
-                        "kube-cma/role": "sandbox",
-                        "kube-cma/session-id": session_id
+                        "outpost-cma/role": "sandbox",
+                        "outpost-cma/session-id": session_id
                     }
                 }
             }
@@ -269,7 +269,7 @@ class KubeSandboxClient:
         try:
             pods = await self.v1.list_namespaced_pod(
                 namespace=self.namespace,
-                label_selector="kube-cma/role=warm-pool"
+                label_selector="outpost-cma/role=warm-pool"
             )
             current_pool_size = len([p for p in pods.items if p.status.phase == "Running"])
             needed = settings.WARM_POOL_SIZE - current_pool_size
@@ -285,8 +285,8 @@ class KubeSandboxClient:
                     metadata=client.V1ObjectMeta(
                         name=warm_pod_name,
                         labels={
-                            "app.kubernetes.io/managed-by": "kube-cma",
-                            "kube-cma/role": "warm-pool"
+                            "app.kubernetes.io/managed-by": "outpost-cma",
+                            "outpost-cma/role": "warm-pool"
                         }
                     ),
                     spec=client.V1PodSpec(

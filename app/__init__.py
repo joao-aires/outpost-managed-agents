@@ -1,1 +1,1 @@
-# KubeCMA package init
+# Outpost Managed Agents package init

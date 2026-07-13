@@ -1,4 +1,4 @@
-# High-performance, secure sandbox environment for KubeCMA agent execution
+# High-performance, secure sandbox environment for Outpost Managed Agents execution
 FROM golang:1.21-bullseye AS go-builder
 
 # Install Anthropic CLI

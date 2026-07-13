@@ -15,11 +15,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.StreamHandler()]
 )
-logger = logging.getLogger("kube_cma.main")
+logger = logging.getLogger("outpost_cma.main")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="Kubernetes Claude Managed Agents Execution Control Plane & Standalone Orchestration Server.",
+    description="Outpost Managed Agents: Kubernetes Execution Control Plane & Standalone Orchestration Server.",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc"

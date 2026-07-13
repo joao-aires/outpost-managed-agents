@@ -11,7 +11,7 @@ from app.models.agent import Agent
 from app.models.session import Session
 from app.services.kubernetes import sandbox_client
 
-logger = logging.getLogger("kube_cma.orchestrator")
+logger = logging.getLogger("outpost_cma.orchestrator")
 
 # In-memory pub-sub for SSE streaming per session
 class SessionPubSub:

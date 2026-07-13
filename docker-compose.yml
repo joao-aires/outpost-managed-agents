@@ -9,7 +9,7 @@ services:
       - "8000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DATABASE_URL=sqlite+aiosqlite:///./kube_managed_agents.db
+      - DATABASE_URL=sqlite+aiosqlite:///./outpost_managed_agents.db
       - REDIS_URL=redis://redis:6379/0
       - KUBERNETES_NAMESPACE=agent-sandboxes
       - SANDBOX_IMAGE=ubuntu:22.04

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.services.kubernetes import sandbox_client
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-logger = logging.getLogger("kube_cma.webhooks")
+logger = logging.getLogger("outpost_cma.webhooks")
 
 # Secret key for webhook signature validation
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "super_secret_webhook_key")
