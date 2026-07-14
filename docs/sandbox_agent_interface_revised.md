@@ -1,19 +1,42 @@
-# Revised Blueprint: Declarative Sandbox Agent Interface (SAI)
+# Blueprint: Declarative Sandbox Agent Interface (SAI)
 
-Based on your feedback, we have refactored the design to make the sandboxes fully flexible. 
+This blueprint defines the architecture and finalized design decisions for the **Sandbox Agent Interface (SAI)** in Outpost Managed Agents.
 
-Outpost will **not** contain any hardcoded logic or models for specific coding agents. Instead, the interface between Outpost and any coding agent is defined by a **Declarative Runtime Manifest** (`AgentRuntimeManifest`).
-
-Outpost acts as a **generic container scheduler, secret vault, and interactive terminal relay (PTY)** that executes the lifecycle hooks defined in the agent's manifest.
+Outpost contains **no** hardcoded logic or models for specific coding agents. Instead, the interface between Outpost and any coding agent is defined by a **Declarative Runtime Manifest** (`AgentRuntimeManifest`). Outpost behaves as a generic container scheduler, secret vault, and interactive terminal relay (PTY) that executes the lifecycle hooks defined in the agent's manifest.
 
 ---
 
-## 1. The Declarative Manifest Interface (`agent-runtime.yaml`)
+## 1. Finalized Architectural Decisions (Aligned)
 
-Every coding agent (whether it is Claude Code, OpenCode, or a custom developer script) is defined by a YAML manifest. This manifest is the exact interface Outpost uses to create and run the agent.
+Through interactive architectural review, the following decisions have been finalized:
+
+### 1.1 Manifest Discovery & Storage
+*   **Decision**: **Hybrid**.
+*   **Behavior**: Built-in default agent manifests (e.g., `claude-code`, `opencode`) are pre-loaded from a local directory (`app/runtimes/`) at startup. Custom manifests uploaded by users via the Admin UI/REST APIs are saved in the database (`coding_agents` table). Outpost merges both sources dynamically.
+
+### 1.2 Interactive PTY / Terminal Streaming
+*   **Decision**: **FastAPI WebSockets Gateway**.
+*   **Behavior**: Outpost exposes a WebSocket endpoint `/v1/sessions/{id}/terminal`. 
+    *   FastAPI acts as a proxy, translating browser WebSockets into K8s exec streams frame-by-frame (`tty=True`).
+    *   Centralized Command Auditing: Outpost intercepts and logs all command inputs forwarded to the PTY stdin, saving them into the `session_audit_logs` table for logging and security compliance.
+    *   **Frontend**: Rendered using the `xterm.js` canvas engine in the operations console to support colors, interactive menus, and layout resizing.
+
+### 1.3 Secret Vault Injection
+*   **Decision**: **Dynamic Kubernetes Secrets**.
+*   **Behavior**: At session startup, Outpost reads the manifest's `variables` schema and creates a temporary Kubernetes `Secret` resource (`secret-session-{id}`). These keys are safely mounted into the Pod using K8s `envFrom` or `valueFrom.secretKeyRef` constraints. Secrets are deleted from the cluster once the session is terminated.
+
+### 1.4 Cache State Persistence
+*   **Decision**: **Dynamic Persistent Volume Claims (PVC)**.
+*   **Behavior**: Outpost creates a small Persistent Volume Claim (`outpost-pvc-session-{id}`) using the cluster's default storage class, mounted to the container paths declared in the manifest's `persistent_paths` (e.g., `~/.claude` or `~/.cursor`). This prevents developers from losing authorization and session logins.
+
+---
+
+## 2. The Declarative Manifest Interface (`agent-runtime.yaml`)
+
+Every coding agent is defined by a YAML manifest following this exact interface schema:
 
 ```yaml
-# Example: docs/runtimes/claude-code.yaml
+# Example: app/runtimes/claude-code.yaml
 id: "claude-code"
 name: "Claude Code"
 version: "0.1.0"
@@ -29,12 +52,12 @@ sandbox:
     requests:
       cpu: "0.2"
       memory: "256Mi"
-  # Paths that must persist across container restarts (mounted via K8s volumes)
+  # Paths that must persist across container restarts (mounted via K8s PVC)
   persistent_paths:
     - name: "claude-cache"
       mount_path: "/home/agent/.claude"
 
-# 2. Variable & Secret Definitions (Injected by Outpost at startup)
+# 2. Variable & Secret Definitions (Injected by Outpost at startup via K8s Secrets)
 variables:
   - name: "ANTHROPIC_API_KEY"
     required: true
@@ -73,9 +96,9 @@ lifecycle:
 
 ---
 
-## 2. Refactored Outpost Control Plane Flow
+## 3. Outpost Control Plane Execution Flow
 
-Under this model, the Outpost backend implements a generic **Lifecycle Executor Engine** instead of writing custom driver classes for each agent:
+The Outpost backend implements a generic **Lifecycle Executor Engine**:
 
 ```
                   [ USER START SESSION REQUEST ]
@@ -86,8 +109,8 @@ Under this model, the Outpost backend implements a generic **Lifecycle Executor 
  └──────────────────────────────┬──────────────────────────────┘
                                 │
                                 ├─ 1. Reads 'sandbox' requirements
-                                ├─ 2. Resolves & encrypts variables/secrets
-                                ├─ 3. Provisions generic K8s Pod + PVC Mounts
+                                ├─ 2. Creates dynamic K8s Secrets & PVCs
+                                ├─ 3. Provisions generic K8s Pod
                                 ▼
  ┌─────────────────────────────────────────────────────────────┐
  │                Kubernetes Pod Sandbox                       │
@@ -101,19 +124,39 @@ Under this model, the Outpost backend implements a generic **Lifecycle Executor 
                  User Keyboard <───> Agent Stdin/Stdout
 ```
 
-### 2.1 Bootstrapping Phase (`setup`)
-When a session is initiated, Outpost provisions a container running the specified `default_image`. It then issues the `lifecycle.setup` commands inside the container using the Kubernetes exec API. This allows the sandbox to pull and set up its own tools (e.g. executing `npm install` or downloading executables).
+### 3.1 Bootstrapping Phase (`setup`)
+When a session is initiated, Outpost provisions a container running the specified `default_image`. It then issues the `lifecycle.setup` commands inside the container using the Kubernetes exec API to pull and configure the coding agent.
 
-### 2.2 Interactive PTY Relay (`run_interactive`)
-To support terminal-based coding agents like Claude Code, the Outpost frontend needs to act as a terminal client. 
-1. Outpost backend opens a Pseudo-Terminal (PTY) by executing the `run_interactive` command on the Kubernetes pod via the WebSocket stream.
-2. The user's inputs in the operations console are sent raw over the WebSocket to the PTY stdin.
-3. The raw ANSI terminal outputs (colors, interactive layouts, selections) are streamed back to the browser and rendered using **Xterm.js**.
+### 3.2 Interactive PTY Relay (`run_interactive`)
+To support terminal-based coding agents like Claude Code, the Outpost backend executes the `run_interactive` command on the Kubernetes pod via the WebSocket stream with `tty=True`. Keystrokes are relayed frame-by-frame and rendered in the browser terminal emulator.
 
 ---
 
-## 3. Benefits of this Interface
+## 4. Database Schema Specifications
 
-1.  **Infinite Extensibility**: Developers can support new coding agents (e.g., `swe-agent`, `devika`, `open-interpreter`) simply by dropping a new YAML manifest file into the `runtimes/` folder, with **zero changes to the Python backend**.
+The following tables are added to support the aligned configurations:
+
+```sql
+CREATE TABLE coding_agents (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    manifest JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE session_audit_logs (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(36) NOT NULL REFERENCES sessions(id),
+    command TEXT NOT NULL,
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## 5. Architectural Benefits
+
+1.  **Infinite Extensibility**: Developers can support new coding agents (e.g., `swe-agent`, `open-interpreter`) simply by registering a new runtime manifest, with **zero changes to the Python backend**.
 2.  **Explicit Secret Boundaries**: Outpost dictates what secrets are injected via the `variables` declaration, preventing the coding agent from scanning the host container for undeclared tokens.
-3.  **Unified Frontend Console**: The Admin Dashboard's terminal becomes a standard PTY client, allowing the developer to interact with *any* command-line agent seamlessly.
+3.  **Audited Shell Access**: High-grade logging intercepts all inputs passing through the PTY gateway, satisfying enterprise compliance.
