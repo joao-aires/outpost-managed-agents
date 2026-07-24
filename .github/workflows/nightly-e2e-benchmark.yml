@@ -1,0 +1,50 @@
+name: Nightly & Post-Merge E2E + Load Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *' # Run nightly at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  e2e-k8s-benchmark:
+    name: Real K8s + LLM E2E & Load Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create k3d Kubernetes Cluster
+        uses: nolar/setup-k3d-k3s@v1
+        with:
+          version: v1.28.2+k3s1
+
+      - name: Install uv & Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Build Sandbox & Control Plane Docker Images
+        run: |
+          docker build -t outpost-sandbox:latest -f docker/Dockerfile.sandbox .
+          docker build -t outpost-managed-agents:latest -f Dockerfile .
+          k3d image import outpost-sandbox:latest outpost-managed-agents:latest -c k3s-default
+
+      - name: Install Helm Release
+        run: |
+          helm upgrade --install outpost-cma charts/outpost-managed-agents \
+            --namespace outpost-system \
+            --create-namespace \
+            --set config.sandboxDriver=direct \
+            --set config.sandboxImage=outpost-sandbox:latest
+
+      - name: Run Real E2E Test Suite
+        run: uv run pytest -m e2e -v
+
+      - name: Run TTFB Load Test Benchmark
+        run: uv run python scratch/load_test_ttfb_benchmark.py

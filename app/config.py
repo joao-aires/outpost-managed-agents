@@ -8,9 +8,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "OutpostManagedAgents"
     API_V1_STR: str = "/v1"
     
-    # Anthropic / BYOB LLM Credentials
+    # LLM Credentials & Provider (Anthropic / Ollama / BYOB)
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "anthropic") # anthropic, ollama, custom
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./outpost_managed_agents.db")
@@ -21,10 +22,20 @@ class Settings(BaseSettings):
     # Kubernetes Configuration
     SANDBOX_DRIVER: str = os.getenv("SANDBOX_DRIVER", "direct") # direct, sigs-sandbox, or mock
     KUBERNETES_NAMESPACE: str = os.getenv("KUBERNETES_NAMESPACE", "agent-sandboxes")
-    SANDBOX_IMAGE: str = os.getenv("SANDBOX_IMAGE", "ubuntu:22.04")
+    SANDBOX_IMAGE: str = os.getenv("SANDBOX_IMAGE", "outpost-sandbox:latest")
     WARM_POOL_SIZE: int = int(os.getenv("WARM_POOL_SIZE", "3"))
     
     # Egress Control
     DEFAULT_ALLOWED_EGRESS_DOMAINS: str = os.getenv("ALLOWED_EGRESS_DOMAINS", "api.github.com,github.com,pypi.org,files.pythonhosted.org")
+
+    # Local Node Disk Cache
+    ENABLE_NODE_LOCAL_CACHE: bool = os.getenv("ENABLE_NODE_LOCAL_CACHE", "true").lower() == "true"
+    NODE_CACHE_HOST_PATH: str = os.getenv("NODE_CACHE_HOST_PATH", "/var/lib/outpost/cache")
+    NODE_CACHE_MOUNT_PATH: str = os.getenv("NODE_CACHE_MOUNT_PATH", "/opt/outpost-cache")
+
+    # Zero-Trust Security Hardening (ADR 0002)
+    SANDBOX_RUNTIME_CLASS: str = os.getenv("SANDBOX_RUNTIME_CLASS", "")
+    ENABLE_READ_ONLY_ROOT_FS: bool = os.getenv("ENABLE_READ_ONLY_ROOT_FS", "true").lower() == "true"
+    DROP_ALL_CAPABILITIES: bool = os.getenv("DROP_ALL_CAPABILITIES", "true").lower() == "true"
 
 settings = Settings()

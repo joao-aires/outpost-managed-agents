@@ -49,8 +49,15 @@ async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(g
     )
     db.add(db_session)
     await db.commit()
+
+    try:
+        pod_name = await sandbox_driver.create_sandbox(db_session.id)
+        db_session.pod_name = pod_name
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Sandbox provisioning on session creation deferred: {e}")
+
     await db.refresh(db_session)
-    
     return SessionResponse(**db_session.to_dict())
 
 @router.get("", response_model=List[SessionResponse])

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-sandboxes
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: outpost-system

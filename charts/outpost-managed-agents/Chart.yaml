@@ -1,0 +1,19 @@
+apiVersion: v2
+name: outpost-managed-agents
+description: Open-Source Execution Control Plane & Runtime for Claude Managed Agents on Kubernetes.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - outpost
+  - claude-managed-agents
+  - kubernetes
+  - agent-runtime
+  - ai-agents
+  - sandbox
+home: https://github.com/joao-aires/outpost-managed-agents
+sources:
+  - https://github.com/joao-aires/outpost-managed-agents
+maintainers:
+  - name: Outpost Team
+    email: maintainers@outpost.ai
