@@ -14,11 +14,14 @@ class Session(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
+        created_dt = self.created_at or datetime.utcnow()
+        updated_dt = self.updated_at or datetime.utcnow()
+
         return {
             "id": self.id,
             "agent_id": self.agent_id,
             "status": self.status,
             "pod_name": self.pod_name,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "created_at": created_dt.isoformat(),
+            "updated_at": updated_dt.isoformat()
         }

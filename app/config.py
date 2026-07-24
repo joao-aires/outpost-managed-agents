@@ -1,12 +1,16 @@
 import os
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(case_sensitive=True, extra="allow")
+
     PROJECT_NAME: str = "OutpostManagedAgents"
     API_V1_STR: str = "/v1"
     
-    # Anthropic Credentials
+    # Anthropic / BYOB LLM Credentials
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "")
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./outpost_managed_agents.db")
@@ -22,8 +26,5 @@ class Settings(BaseSettings):
     
     # Egress Control
     DEFAULT_ALLOWED_EGRESS_DOMAINS: str = os.getenv("ALLOWED_EGRESS_DOMAINS", "api.github.com,github.com,pypi.org,files.pythonhosted.org")
-
-    class Config:
-        case_sensitive = True
 
 settings = Settings()

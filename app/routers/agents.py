@@ -2,7 +2,7 @@ from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.database import get_db
 from app.models.agent import Agent
@@ -18,19 +18,26 @@ class ToolSchema(BaseModel):
 class AgentCreate(BaseModel):
     name: str
     model: str = "claude-3-5-sonnet-latest"
+    harness: Optional[str] = "claude-code"  # claude-code, opencode, aider, cursor, custom
     system: Optional[str] = None
-    tools: Optional[List[dict]] = []
+    skills: Optional[List[Dict[str, Any]]] = []
+    tools: Optional[List[Dict[str, Any]]] = []
+    environment: Optional[Dict[str, Any]] = {}
+    agent_config: Optional[Dict[str, Any]] = {}
 
 class AgentResponse(BaseModel):
     id: str
     name: str
     model: str
+    harness: str
     system: Optional[str]
-    tools: List[dict]
+    skills: List[Dict[str, Any]]
+    tools: List[Dict[str, Any]]
+    environment: Dict[str, Any]
+    agent_config: Dict[str, Any]
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 async def create_agent(agent_in: AgentCreate, db: AsyncSession = Depends(get_db)):
@@ -40,11 +47,16 @@ async def create_agent(agent_in: AgentCreate, db: AsyncSession = Depends(get_db)
     db_agent = Agent(
         name=agent_in.name,
         model=agent_in.model,
+        harness=agent_in.harness or "claude-code",
         system=agent_in.system,
-        tools=agent_in.tools
+        skills=agent_in.skills or [],
+        tools=agent_in.tools or [],
+        environment=agent_in.environment or {},
+        agent_config=agent_in.agent_config or {}
     )
     db.add(db_agent)
-    await db.flush() # gets db_agent.id
+    await db.commit()
+    await db.refresh(db_agent)
     
     return AgentResponse(**db_agent.to_dict())
 
@@ -84,4 +96,5 @@ async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
             detail=f"Agent with ID {agent_id} not found"
         )
     await db.delete(agent)
+    await db.commit()
     return None

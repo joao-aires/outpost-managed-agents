@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.database import get_db
 from app.models.session import Session
@@ -25,8 +25,7 @@ class SessionResponse(BaseModel):
     created_at: str
     updated_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserEventIn(BaseModel):
     message: str
@@ -36,7 +35,6 @@ async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(g
     """
     Creates a new agent session (equivalent to POST /v1/sessions)
     """
-    # Verify Agent exists
     result = await db.execute(select(Agent).where(Agent.id == session_in.agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -50,7 +48,8 @@ async def create_session(session_in: SessionCreate, db: AsyncSession = Depends(g
         status="idle"
     )
     db.add(db_session)
-    await db.flush() # gets db_session.id
+    await db.commit()
+    await db.refresh(db_session)
     
     return SessionResponse(**db_session.to_dict())
 
@@ -95,7 +94,6 @@ async def send_session_event(
             detail=f"Session with ID {session_id} not found"
         )
     
-    # Process agent loop in background to keep endpoint responsive
     background_tasks.add_task(
         agent_orchestrator.run_session_turn,
         session_id=session_id,
@@ -119,7 +117,6 @@ async def stream_session_events(session_id: str, db: AsyncSession = Depends(get_
         )
     
     async def sse_generator():
-        # Get stream generator from agent orchestrator
         async for event in agent_orchestrator.get_stream_generator(session_id):
             yield f"event: {event['event']}\ndata: {event['data']}\n\n"
 
@@ -138,9 +135,9 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
             detail=f"Session with ID {session_id} not found"
         )
     
-    # Clean up Kubernetes sandbox Pod if exists
     if session.pod_name:
         await sandbox_driver.delete_sandbox(session.pod_name)
         
     await db.delete(session)
+    await db.commit()
     return None

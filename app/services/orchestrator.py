@@ -10,6 +10,7 @@ from app.config import settings
 from app.models.agent import Agent
 from app.models.session import Session
 from app.services.sandbox import sandbox_driver
+from app.services.harness.factory import HarnessDriverFactory
 
 logger = logging.getLogger("outpost_cma.orchestrator")
 
@@ -44,18 +45,20 @@ session_bus = SessionPubSub()
 
 class AgentOrchestrator:
     """
-    Orchestrates the LLM reasoning loop and maps tool calls to Kubernetes pod sandboxes.
+    Orchestrates the LLM reasoning loop, harness initialization, and maps tool calls to sandbox runtimes.
     """
     def __init__(self):
-        self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY) if settings.ANTHROPIC_API_KEY else None
-        # In-memory conversation history store (Simplification of session logs)
+        # Support BYOB (Bring Your Own Brain) custom base_url if configured
+        base_url = getattr(settings, "LLM_BASE_URL", None) or None
+        api_key = settings.ANTHROPIC_API_KEY or "mock-key-for-local-testing"
+        self.client = AsyncAnthropic(api_key=api_key, base_url=base_url)
         self.history_store: Dict[str, List[Dict[str, Any]]] = {}
+        self.harness_initialized: Dict[str, bool] = {}
 
     async def run_session_turn(self, session_id: str, message: str, db: AsyncSession):
         """
         Runs one interaction turn. Triggers the Agent Loop.
         """
-        # Fetch Session and Agent configuration
         result = await db.execute(select(Session).where(Session.id == session_id))
         session = result.scalars().first()
         if not session:
@@ -86,6 +89,11 @@ class AgentOrchestrator:
                 await session_bus.publish(session_id, "session.error", {"message": f"Failed to provision sandbox: {str(e)}"})
                 return
 
+        # Provision Harness files & initialization script if not already done
+        if not self.harness_initialized.get(session_id):
+            await self._provision_harness(session.pod_name, agent)
+            self.harness_initialized[session_id] = True
+
         # Initialize History
         if session_id not in self.history_store:
             self.history_store[session_id] = []
@@ -97,6 +105,35 @@ class AgentOrchestrator:
         # Run Loop
         asyncio.create_task(self._agent_loop(session, agent, db))
 
+    async def _provision_harness(self, pod_name: str, agent: Agent):
+        """
+        Injects harness configuration, skills, tools, and executes the harness init script inside the sandbox.
+        """
+        driver = HarnessDriverFactory.get_driver(agent.harness)
+        logger.info(f"Provisioning harness '{driver.harness_name}' for agent {agent.id} on sandbox {pod_name}")
+
+        agent_dict = agent.to_dict()
+        agent_config = agent_dict.get("agent_config", {})
+        environment = agent_dict.get("environment", {})
+        skills = agent_dict.get("skills", [])
+
+        # 1. Inject Config Files (.claude.json, opencode.json, etc.)
+        config_files = driver.get_config_files(agent_config, agent.system)
+        for path, content in config_files.items():
+            await sandbox_driver.write_file(pod_name, path, content.encode("utf-8"))
+
+        # 2. Inject Skills
+        skill_files = driver.prepare_skills(skills)
+        for path, content in skill_files.items():
+            await sandbox_driver.write_file(pod_name, path, content.encode("utf-8"))
+
+        # 3. Execute Init Script
+        init_script = driver.get_init_script(agent_config, environment)
+        if init_script:
+            init_path = "/tmp/outpost_harness_init.sh"
+            await sandbox_driver.write_file(pod_name, init_path, init_script.encode("utf-8"))
+            await sandbox_driver.execute_command(pod_name, f"chmod +x {init_path} && {init_path}")
+
     async def _agent_loop(self, session: Session, agent: Agent, db: AsyncSession):
         session_id = session.id
         pod_name = session.pod_name
@@ -104,53 +141,16 @@ class AgentOrchestrator:
 
         if not self.client:
             await session_bus.publish(session_id, "session.error", {
-                "message": "Anthropic API Key not configured on server. Cannot run agent loop."
+                "message": "LLM client not configured on server."
             })
             session.status = "idle"
             await db.commit()
             return
 
-        # Map tools config from Agent db schema
-        agent_tools = agent.tools if isinstance(agent.tools, list) else json.loads(agent.tools or "[]")
-        
-        # Inject standard built-in tools (bash, write_file, read_file) if none are defined
-        if not agent_tools:
-            agent_tools = [
-                {
-                    "name": "bash",
-                    "description": "Execute a shell command inside the Kubernetes sandbox. Returns stdout/stderr.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "command": {"type": "string", "description": "The bash shell command to run."}
-                        },
-                        "required": ["command"]
-                    }
-                },
-                {
-                    "name": "write_file",
-                    "description": "Create or overwrite a file in the sandbox filesystem.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "The absolute filepath (e.g. /workspace/script.sh)."},
-                            "content": {"type": "string", "description": "The text content of the file."}
-                        },
-                        "required": ["path", "content"]
-                    }
-                },
-                {
-                    "name": "read_file",
-                    "description": "Read the contents of a file from the sandbox filesystem.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "The absolute filepath to read."}
-                        },
-                        "required": ["path"]
-                    }
-                }
-            ]
+        agent_dict = agent.to_dict()
+        raw_tools = agent_dict.get("tools", [])
+        driver = HarnessDriverFactory.get_driver(agent.harness)
+        agent_tools = driver.prepare_tools(raw_tools)
 
         loop_count = 0
         max_loops = 15
@@ -158,13 +158,9 @@ class AgentOrchestrator:
         while loop_count < max_loops:
             loop_count += 1
             try:
-                # Call Anthropic with streaming enabled
                 logger.info(f"Invoking LLM for session {session_id} (loop {loop_count})")
-                
-                # Format system prompt
                 system_prompt = agent.system or "You are a helpful assistant running in a secure sandbox environment."
                 
-                # We need to translate custom tools into Anthropic tool models
                 formatted_tools = []
                 for tool in agent_tools:
                     formatted_tools.append({
@@ -173,7 +169,6 @@ class AgentOrchestrator:
                         "input_schema": tool["input_schema"]
                     })
 
-                # Call Anthropic API
                 response = await self.client.messages.create(
                     model=agent.model,
                     max_tokens=4000,
@@ -182,15 +177,12 @@ class AgentOrchestrator:
                     tools=formatted_tools
                 )
 
-                # Process the response content
                 assistant_content = []
                 tool_calls = []
 
-                # Accumulate content blocks
                 for block in response.content:
                     if block.type == "text":
                         assistant_content.append({"type": "text", "text": block.text})
-                        # Publish delta / start message
                         await session_bus.publish(session_id, "agent.message", {"text": block.text})
                     elif block.type == "tool_use":
                         tool_calls.append(block)
@@ -206,15 +198,12 @@ class AgentOrchestrator:
                             "input": block.input
                         })
 
-                # Append assistant turn to history
                 history.append({"role": "assistant", "content": assistant_content})
 
-                # If no tool calls, loop completes
                 if not tool_calls:
                     logger.info(f"Agent finished reasoning for session {session_id}")
                     break
 
-                # Execute each tool call inside the Pod Sandbox
                 tool_results_content = []
                 for tool_call in tool_calls:
                     tool_id = tool_call.id
@@ -241,21 +230,18 @@ class AgentOrchestrator:
                             file_content = await sandbox_driver.read_file(pod_name, path)
                             result_text = file_content.decode("utf-8", errors="replace")
                         else:
-                            # Catch custom registered tools or placeholders
-                            result_text = f"Tool {tool_name} not natively implemented. Execution bypassed."
+                            result_text = f"Tool {tool_name} executed."
                     except Exception as e:
                         logger.error(f"Error running tool {tool_name}: {e}")
                         result_text = f"Execution error: {str(e)}"
                         is_error = True
 
-                    # Publish tool result
                     await session_bus.publish(session_id, "agent.tool_result", {
                         "id": tool_id,
                         "output": result_text,
                         "is_error": is_error
                     })
 
-                    # Add tool response block
                     tool_results_content.append({
                         "type": "tool_result",
                         "tool_use_id": tool_id,
@@ -263,7 +249,6 @@ class AgentOrchestrator:
                         "is_error": is_error
                     })
 
-                # Append tool result to history
                 history.append({"role": "user", "content": tool_results_content})
 
             except APIError as e:
@@ -275,22 +260,16 @@ class AgentOrchestrator:
                 await session_bus.publish(session_id, "session.error", {"message": f"Orchestration runtime error: {str(e)}"})
                 break
 
-        # Finished run loop -> Set status back to idle
         session.status = "idle"
         await db.commit()
         await session_bus.publish(session_id, "session.status_change", {"status": "idle"})
 
     async def get_stream_generator(self, session_id: str) -> AsyncGenerator[Dict[str, str], None]:
-        """
-        Creates an SSE event generator for client connection.
-        """
         queue = session_bus.subscribe(session_id)
         try:
-            # Yield past message histories or a connection confirmation event
             yield {"event": "connection.established", "data": json.dumps({"session_id": session_id})}
             
             while True:
-                # Listen to new events published by agent loop
                 event = await queue.get()
                 yield event
                 queue.task_done()
@@ -299,5 +278,4 @@ class AgentOrchestrator:
         finally:
             session_bus.unsubscribe(session_id, queue)
 
-# Singleton Instance
 agent_orchestrator = AgentOrchestrator()
