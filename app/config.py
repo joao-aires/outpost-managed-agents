@@ -33,4 +33,9 @@ class Settings(BaseSettings):
     NODE_CACHE_HOST_PATH: str = os.getenv("NODE_CACHE_HOST_PATH", "/var/lib/outpost/cache")
     NODE_CACHE_MOUNT_PATH: str = os.getenv("NODE_CACHE_MOUNT_PATH", "/opt/outpost-cache")
 
+    # Zero-Trust Security Hardening (ADR 0002)
+    SANDBOX_RUNTIME_CLASS: str = os.getenv("SANDBOX_RUNTIME_CLASS", "")
+    ENABLE_READ_ONLY_ROOT_FS: bool = os.getenv("ENABLE_READ_ONLY_ROOT_FS", "true").lower() == "true"
+    DROP_ALL_CAPABILITIES: bool = os.getenv("DROP_ALL_CAPABILITIES", "true").lower() == "true"
+
 settings = Settings()

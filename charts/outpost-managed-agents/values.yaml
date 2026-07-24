@@ -38,6 +38,16 @@ nodeCache:
   llmProvider: "anthropic" # anthropic, ollama, or custom
   llmBaseUrl: "" # e.g. "http://127.0.0.1:11434" for local Ollama
 
+# Zero-Trust Security Hardening (ADR 0002)
+securityHardening:
+  enabled: true
+  podSecurityNamespaceEnforce: "restricted"
+  runtimeClassName: "" # e.g. "gvisor" or empty
+  readOnlyRootFs: true
+  dropAllCapabilities: true
+  networkPolicy:
+    enabled: true
+
 # Secrets
 secrets:
   anthropicApiKey: ""

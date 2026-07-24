@@ -60,6 +60,18 @@ class DirectPodDriver(BaseSandboxDriver):
         volumes = []
         env = []
 
+        # ADR 0002: Security Hardening - Writable emptyDir volumes for /workspace and /tmp when root FS is read-only
+        if settings.ENABLE_READ_ONLY_ROOT_FS:
+            volume_mounts.extend([
+                client.V1VolumeMount(name="workspace-dir", mount_path="/workspace"),
+                client.V1VolumeMount(name="tmp-dir", mount_path="/tmp")
+            ])
+            volumes.extend([
+                client.V1Volume(name="workspace-dir", empty_dir=client.V1EmptyDirVolumeSource()),
+                client.V1Volume(name="tmp-dir", empty_dir=client.V1EmptyDirVolumeSource())
+            ])
+
+        # ADR 0001: Local Node Disk Cache
         if settings.ENABLE_NODE_LOCAL_CACHE:
             volume_mounts.append(client.V1VolumeMount(
                 name="node-tool-cache",
@@ -78,12 +90,24 @@ class DirectPodDriver(BaseSandboxDriver):
                 value=f"{settings.NODE_CACHE_MOUNT_PATH}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             ))
 
+        # ADR 0002: Container Security Context
+        container_security_context = client.V1SecurityContext(
+            allow_privilege_escalation=False,
+            run_as_user=1000,
+            run_as_group=1000,
+            run_as_non_root=True,
+            read_only_root_filesystem=settings.ENABLE_READ_ONLY_ROOT_FS,
+            capabilities=client.V1Capabilities(drop=["ALL"]) if settings.DROP_ALL_CAPABILITIES else None,
+            seccomp_profile=client.V1SeccompProfile(type="RuntimeDefault")
+        )
+
         return client.V1Pod(
             metadata=client.V1ObjectMeta(
                 name=pod_name,
                 labels=labels
             ),
             spec=client.V1PodSpec(
+                runtime_class_name=settings.SANDBOX_RUNTIME_CLASS if settings.SANDBOX_RUNTIME_CLASS else None,
                 containers=[
                     client.V1Container(
                         name="sandbox",
@@ -96,11 +120,7 @@ class DirectPodDriver(BaseSandboxDriver):
                             limits={"cpu": "1", "memory": "1Gi"},
                             requests={"cpu": "0.2", "memory": "256Mi"}
                         ),
-                        security_context=client.V1SecurityContext(
-                            allow_privilege_escalation=False,
-                            run_as_user=1000,
-                            run_as_group=1000
-                        )
+                        security_context=container_security_context
                     )
                 ],
                 volumes=volumes if volumes else None,
@@ -215,37 +235,11 @@ class DirectPodDriver(BaseSandboxDriver):
     async def _create_warm_pod(self) -> str:
         warm_id = uuid.uuid4().hex[:8]
         pod_name = f"agent-sandbox-warm-{warm_id}"
-        
-        pod_manifest = client.V1Pod(
-            metadata=client.V1ObjectMeta(
-                name=pod_name,
-                labels={
-                    "app.kubernetes.io/managed-by": "outpost-cma",
-                    "outpost-cma/role": "warm-pool",
-                }
-            ),
-            spec=client.V1PodSpec(
-                containers=[
-                    client.V1Container(
-                        name="sandbox",
-                        image=settings.SANDBOX_IMAGE,
-                        image_pull_policy="IfNotPresent",
-                        command=["tail", "-f", "/dev/null"],
-                        resources=client.V1ResourceRequirements(
-                            limits={"cpu": "1", "memory": "1Gi"},
-                            requests={"cpu": "0.2", "memory": "256Mi"}
-                        ),
-                        security_context=client.V1SecurityContext(
-                            allow_privilege_escalation=False,
-                            run_as_user=1000,
-                            run_as_group=1000
-                        )
-                    )
-                ],
-                restart_policy="Never",
-                termination_grace_period_seconds=5
-            )
-        )
+        labels = {
+            "app.kubernetes.io/managed-by": "outpost-cma",
+            "outpost-cma/role": "warm-pool",
+        }
+        pod_manifest = self._build_pod_manifest(pod_name, labels)
 
         await self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
         return pod_name

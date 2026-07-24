@@ -1,0 +1,32 @@
+{{- if .Values.securityHardening.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "outpost.fullname" . }}-sandbox-isolation
+  namespace: {{ .Values.config.kubernetesNamespace | quote }}
+  labels:
+    {{- include "outpost.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: outpost-cma
+  policyTypes:
+  - Ingress
+  - Egress
+  # Default Deny Ingress
+  ingress: []
+  # Egress Rules: Allow DNS lookup to CoreDNS and restrict arbitrary cluster IP scanning
+  egress:
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow external web egress while blocking internal cloud metadata IP (169.254.169.254) and K8s API
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.169.254/32 # Cloud Metadata Endpoint
+        - 10.43.0.0/16     # Default K8s Cluster Service CIDR
+{{- end }}

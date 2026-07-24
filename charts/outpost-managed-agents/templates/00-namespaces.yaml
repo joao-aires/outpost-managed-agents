@@ -6,4 +6,6 @@ metadata:
   labels:
     {{- include "outpost.labels" . | nindent 4 }}
     outpost-cma/role: "sandbox-namespace"
+    pod-security.kubernetes.io/enforce: {{ .Values.securityHardening.podSecurityNamespaceEnforce | quote }}
+    pod-security.kubernetes.io/enforce-version: "latest"
 {{- end }}
