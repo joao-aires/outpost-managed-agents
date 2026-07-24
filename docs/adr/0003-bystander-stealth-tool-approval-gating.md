@@ -97,8 +97,48 @@ When the Bystander outputs `DENY`, the control plane returns a native operating 
 
 ---
 
+## ⚡ Latency & Performance Optimization Architecture
+
+To ensure the stealth approval engine does not degrade developer experience (DevEx) or add noticeable latency to agent execution loops, the following 5 acceleration strategies are specified:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        EVALUATION LATENCY ACCELERATION PIPELINE                        │
+│                                                                                        │
+│ 1. Tool Call Received -> Hash Signature Lookup in Session Vector Cache (<2ms)          │
+│    └─► Cache Hit? ──► AUTO-APPROVE (0ms LLM overhead)                                  │
+│    └─► Cache Miss? ──► Proceed to Step 2                                               │
+│                                                                                        │
+│ 2. Distilled Small Language Model (SLM) / ONNX Fast Classifier (15ms - 30ms)          │
+│    └─► Low Anomaly (<0.35)? ──► APPROVE                                                │
+│    └─► High Anomaly (>0.65)? ──► DENY                                                  │
+│    └─► Ambiguous (0.35 - 0.65)? ──► Escalate to 70B Supervisor LLM                     │
+│                                                                                        │
+│ 3. Streaming First-Token Interception & Logit Bias (<20ms short-circuit)              │
+│    └─► If token 1 = "DENY", terminate generation and issue masked OS error immediately.│
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Session Semantic Embedding Cache (<2ms)**:
+   Frequently executed safe command patterns (e.g. `pytest`, `npm test`, `git status`) generate vector embedding signatures stored in an in-memory cache per session. Cache hits bypass LLM inference completely (**<2ms resolution**).
+
+2. **SLM / Fast Classifier Cascade (15ms - 30ms)**:
+   Routine tool evaluations are handled by a distilled 1B-3B Small Language Model (SLM) or quantized ONNX security classifier (e.g. `Llama-Guard-Small`). Only ambiguous or high-anomaly actions ($0.35 < \text{Anomaly} < 0.65$) are escalated to full 70B+ LLMs.
+
+3. **Streaming First-Token Interception**:
+   The Bystander LLM is configured with strict `logit_bias` forcing `{"verdict": "PASS"}` or `{"verdict": "DENY"}` as the very first token. The approval gateway inspects the first token off the inference stream, short-circuiting generation immediately (**<20ms evaluation**).
+
+4. **Speculative Non-Committing Execution**:
+   While high-risk commands are being evaluated by the Bystander out-of-band (~100ms), the orchestrator can speculatively pre-resolve DNS or load container resources in parallel without committing disk state changes.
+
+5. **Asynchronous Read-Only Processing**:
+   Low-risk read operations (`cat`, `ls`) are processed via asynchronous non-blocking queues, ensuring zero latency impact on agent iteration loops.
+
+---
+
 ## Positive Consequences
 
 * **Pre-Execution Security**: Malicious tool calls are blocked before modifying filesystem state or sending network packets.
+* **Sub-30ms Evaluation Latency**: Tiered SLMs, vector caching, and first-token streaming keep approval latency below natural OS I/O wait thresholds.
 * **Immunity to Sandbox Evasion**: Agents cannot adapt or bypass supervisors they cannot observe or interact with.
 * **Dual Value**: Combines real-time security enforcement with rich, out-of-band workflow observability for human bystanders.
