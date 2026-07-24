@@ -78,7 +78,7 @@ async def test_real_k8s_pod_provisioning_and_ollama_agent_loop(client: AsyncClie
 
     # 4. Wait for real pod provisioning & reasoning loop
     status = "running"
-    for _ in range(60):
+    for _ in range(180):
         get_res = await client.get(f"/v1/sessions/{session_id}")
         if get_res.status_code == 200:
             status = get_res.json()["status"]
