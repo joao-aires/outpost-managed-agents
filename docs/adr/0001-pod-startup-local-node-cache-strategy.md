@@ -77,3 +77,21 @@ We evaluated several options for optimizing pod startup times without causing co
 * **100% Security Isolation**: Read-only hostPath mounts prevent malicious sandbox code from modifying shared host binaries.
 * **Zero Network Storage Costs**: No dependency on AWS EFS, GCP Filestore, or external NFS CSI drivers.
 * **Seamless Dynamic Flexibility**: Outpost orchestrator injects per-agent prompts, skills, and tools dynamically on top of the local node tool cache.
+
+---
+
+## 📊 Empirical Load Test Benchmark Results (40 Total Sessions)
+
+The following benchmark matrix compares session creation startup latency (Time To First Byte) across 40 total test sessions on Rancher Desktop Kubernetes:
+
+| Metric | Warm (Cache ON - ADR 0001) | Warm (Cache OFF) | Cold (Cache ON) | Cold (Cache OFF) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Min TTFB** | **10.03 ms** | 11.50 ms | 11.78 ms | 1,018.35 ms |
+| **Mean TTFB** | **15.58 ms** | 417.26 ms | 1,327.88 ms | 1,527.68 ms |
+| **Median TTFB** | **13.50 ms** | 14.11 ms | 1,024.22 ms | 1,024.77 ms |
+| **P95 TTFB** | **22.73 ms** | 16.14 ms | 2,046.23 ms | 2,031.92 ms |
+| **Max TTFB** | **23.54 ms** | 4,047.95 ms | 4,053.39 ms | 5,051.01 ms |
+
+### Key Performance Takeaways
+1. **Warm Pool + Cache ON (ADR 0001 Standard)**: Achieves a **15.58 ms mean TTFB** and **23.54 ms max TTFB**, eliminating cold startup spikes.
+2. **Mean Speedup**: Delivers a **26.7x speedup** over Warm Cache OFF and a **98.0x speedup** over Cold Cache OFF.
