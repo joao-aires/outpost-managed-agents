@@ -295,8 +295,10 @@ class AgentOrchestrator:
                 await session_bus.publish(session_id, "session.error", {"message": f"Orchestration runtime error: {str(e)}"})
                 break
 
-        session.status = "idle"
-        await db.commit()
+        s_obj = await db.scalar(select(Session).where(Session.id == session_id))
+        if s_obj:
+            s_obj.status = "idle"
+            await db.commit()
         await session_bus.publish(session_id, "session.status_change", {"status": "idle"})
 
     async def get_stream_generator(self, session_id: str) -> AsyncGenerator[Dict[str, str], None]:

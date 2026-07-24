@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import agents, sessions, webhooks
+from app.routers import agents, sessions, webhooks, health
 from app.services.sandbox import sandbox_driver
 
 # Configure Logging
@@ -71,6 +71,7 @@ app.add_middleware(
 app.include_router(agents.router, prefix=settings.API_V1_STR)
 app.include_router(sessions.router, prefix=settings.API_V1_STR)
 app.include_router(webhooks.router)
+app.include_router(health.router)
 
 # Mount Frontend UI static files
 app.mount("/ui", StaticFiles(directory="app/static", html=True), name="ui")
