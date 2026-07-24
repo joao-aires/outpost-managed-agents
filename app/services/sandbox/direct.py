@@ -55,23 +55,33 @@ class DirectPodDriver(BaseSandboxDriver):
             logger.error(f"Failed to initialize Kubernetes API connection: {e}")
             raise
 
-    async def create_sandbox(self, session_id: str) -> str:
-        pod_name = f"agent-sandbox-{session_id[:8]}-{uuid.uuid4().hex[:6]}"
-        
-        # Check warm pool first
-        claimed_pod = await self._claim_warm_pod(session_id)
-        if claimed_pod:
-            return claimed_pod
+    def _build_pod_manifest(self, pod_name: str, labels: Dict[str, str]) -> client.V1Pod:
+        volume_mounts = []
+        volumes = []
+        env = []
 
-        # Standard Manifest
-        pod_manifest = client.V1Pod(
+        if settings.ENABLE_NODE_LOCAL_CACHE:
+            volume_mounts.append(client.V1VolumeMount(
+                name="node-tool-cache",
+                mount_path=settings.NODE_CACHE_MOUNT_PATH,
+                read_only=True
+            ))
+            volumes.append(client.V1Volume(
+                name="node-tool-cache",
+                host_path=client.V1HostPathVolumeSource(
+                    path=settings.NODE_CACHE_HOST_PATH,
+                    type="DirectoryOrCreate"
+                )
+            ))
+            env.append(client.V1EnvVar(
+                name="PATH",
+                value=f"{settings.NODE_CACHE_MOUNT_PATH}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ))
+
+        return client.V1Pod(
             metadata=client.V1ObjectMeta(
                 name=pod_name,
-                labels={
-                    "app.kubernetes.io/managed-by": "outpost-cma",
-                    "outpost-cma/role": "sandbox",
-                    "outpost-cma/session-id": session_id,
-                }
+                labels=labels
             ),
             spec=client.V1PodSpec(
                 containers=[
@@ -80,6 +90,8 @@ class DirectPodDriver(BaseSandboxDriver):
                         image=settings.SANDBOX_IMAGE,
                         image_pull_policy="IfNotPresent",
                         command=["tail", "-f", "/dev/null"],
+                        env=env if env else None,
+                        volume_mounts=volume_mounts if volume_mounts else None,
                         resources=client.V1ResourceRequirements(
                             limits={"cpu": "1", "memory": "1Gi"},
                             requests={"cpu": "0.2", "memory": "256Mi"}
@@ -91,10 +103,26 @@ class DirectPodDriver(BaseSandboxDriver):
                         )
                     )
                 ],
+                volumes=volumes if volumes else None,
                 restart_policy="Never",
                 termination_grace_period_seconds=5
             )
         )
+
+    async def create_sandbox(self, session_id: str) -> str:
+        pod_name = f"agent-sandbox-{session_id[:8]}-{uuid.uuid4().hex[:6]}"
+        
+        # Check warm pool first
+        claimed_pod = await self._claim_warm_pod(session_id)
+        if claimed_pod:
+            return claimed_pod
+
+        labels = {
+            "app.kubernetes.io/managed-by": "outpost-cma",
+            "outpost-cma/role": "sandbox",
+            "outpost-cma/session-id": session_id,
+        }
+        pod_manifest = self._build_pod_manifest(pod_name, labels)
 
         logger.info(f"Creating sandbox pod {pod_name}...")
         await self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)

@@ -1,0 +1,39 @@
+{{- if .Values.nodeCache.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "outpost.fullname" . }}-cache-warmer
+  namespace: {{ .Values.sandboxNamespace | default "agent-sandboxes" }}
+  labels:
+    {{- include "outpost.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache-warmer
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: cache-warmer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: cache-warmer
+    spec:
+      containers:
+        - name: cache-warmer
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /outpost-cache/bin /outpost-cache/uv-cache
+              echo "# Outpost Local Node Tool Cache Initialized" > /outpost-cache/bin/README.txt
+              chmod -R 755 /outpost-cache
+              echo "Local node tool cache ready at {{ .Values.nodeCache.hostPath }}."
+              sleep infinity
+          volumeMounts:
+            - name: node-cache-dir
+              mountPath: /outpost-cache
+      volumes:
+        - name: node-cache-dir
+          hostPath:
+            path: {{ .Values.nodeCache.hostPath | default "/var/lib/outpost/cache" }}
+            type: DirectoryOrCreate
+{{- end }}

@@ -28,4 +28,9 @@ class Settings(BaseSettings):
     # Egress Control
     DEFAULT_ALLOWED_EGRESS_DOMAINS: str = os.getenv("ALLOWED_EGRESS_DOMAINS", "api.github.com,github.com,pypi.org,files.pythonhosted.org")
 
+    # Local Node Disk Cache
+    ENABLE_NODE_LOCAL_CACHE: bool = os.getenv("ENABLE_NODE_LOCAL_CACHE", "true").lower() == "true"
+    NODE_CACHE_HOST_PATH: str = os.getenv("NODE_CACHE_HOST_PATH", "/var/lib/outpost/cache")
+    NODE_CACHE_MOUNT_PATH: str = os.getenv("NODE_CACHE_MOUNT_PATH", "/opt/outpost-cache")
+
 settings = Settings()
