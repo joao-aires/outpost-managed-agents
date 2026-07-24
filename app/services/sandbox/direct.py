@@ -12,7 +12,6 @@ logger = logging.getLogger("outpost_cma.sandbox.direct")
 try:
     from kubernetes_asyncio import client, config
     from kubernetes_asyncio.client.api import core_v1_api
-    from kubernetes_asyncio.stream import WsApiClient
     K8S_AVAILABLE = True
 except ImportError:
     K8S_AVAILABLE = False
@@ -44,7 +43,7 @@ class DirectPodDriver(BaseSandboxDriver):
             
             # Ensure Namespace exists
             try:
-                await self.v1.read_namespaced_namespace(self.namespace)
+                await self.v1.read_namespace(self.namespace)
             except client.exceptions.ApiException as e:
                 if e.status == 404:
                     ns_spec = client.V1Namespace(metadata=client.V1ObjectMeta(name=self.namespace))
@@ -79,6 +78,7 @@ class DirectPodDriver(BaseSandboxDriver):
                     client.V1Container(
                         name="sandbox",
                         image=settings.SANDBOX_IMAGE,
+                        image_pull_policy="IfNotPresent",
                         command=["tail", "-f", "/dev/null"],
                         resources=client.V1ResourceRequirements(
                             limits={"cpu": "1", "memory": "1Gi"},
@@ -111,38 +111,18 @@ class DirectPodDriver(BaseSandboxDriver):
 
     async def execute_command(self, sandbox_id: str, command: str) -> Dict[str, str]:
         try:
-            from kubernetes_asyncio.stream import stream
-            exec_command = ["/bin/bash", "-c", command]
-            
-            async with WsApiClient() as ws_client:
-                ws_v1 = core_v1_api.CoreV1Api(ws_client)
-                resp = await stream(
-                    ws_v1.connect_post_namespaced_pod_exec,
-                    sandbox_id,
-                    self.namespace,
-                    command=exec_command,
-                    stderr=True,
-                    stdin=False,
-                    stdout=True,
-                    tty=False,
-                    _preload_content=False
-                )
-                
-                stdout_accum = []
-                stderr_accum = []
-                
-                while resp.is_open():
-                    await resp.update(timeout=1)
-                    if resp.peek_stdout():
-                        stdout_accum.append(resp.read_stdout())
-                    if resp.peek_stderr():
-                        stderr_accum.append(resp.read_stderr())
-                
-                return {
-                    "stdout": "".join(stdout_accum),
-                    "stderr": "".join(stderr_accum),
-                    "exit_code": str(resp.returncode or 0)
-                }
+            cmd = ["kubectl", "exec", "-n", self.namespace, sandbox_id, "--", "/bin/bash", "-c", command]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            return {
+                "stdout": stdout.decode("utf-8"),
+                "stderr": stderr.decode("utf-8"),
+                "exit_code": str(proc.returncode)
+            }
         except Exception as e:
             logger.error(f"Command execution failed inside pod {sandbox_id}: {e}")
             return {"stdout": "", "stderr": str(e), "exit_code": "1"}
@@ -164,85 +144,110 @@ class DirectPodDriver(BaseSandboxDriver):
         return result["exit_code"] == "0"
 
     async def delete_sandbox(self, sandbox_id: str) -> None:
+        logger.info(f"Deleting sandbox pod {sandbox_id}...")
         try:
-            logger.info(f"Deleting sandbox pod {sandbox_id}...")
-            await self.v1.delete_namespaced_pod(name=sandbox_id, namespace=self.namespace)
+            await self.v1.delete_namespaced_pod(
+                name=sandbox_id,
+                namespace=self.namespace,
+                grace_period_seconds=0
+            )
         except client.exceptions.ApiException as e:
             if e.status != 404:
-                logger.error(f"Error deleting pod {sandbox_id}: {e}")
+                logger.error(f"Failed to delete pod {sandbox_id}: {e}")
 
     async def reconcile_warm_pool(self) -> None:
-        if not K8S_AVAILABLE or not self.v1:
+        """
+        Maintains a pool of pre-warmed sandbox pods for zero-latency agent startup.
+        """
+        if not self.v1:
             return
 
+        target_pool_size = settings.WARM_POOL_SIZE
         try:
-            pods = await self.v1.list_namespaced_pod(
+            pod_list = await self.v1.list_namespaced_pod(
                 namespace=self.namespace,
                 label_selector="outpost-cma/role=warm-pool"
             )
-            current_pool_size = len([p for p in pods.items if p.status.phase == "Running"])
-            needed = settings.WARM_POOL_SIZE - current_pool_size
             
-            if needed <= 0:
-                return
-
-            logger.info(f"Direct pool size: {current_pool_size}/{settings.WARM_POOL_SIZE}. Spawning {needed} pods.")
-            for _ in range(needed):
-                warm_pod_name = f"agent-warm-{uuid.uuid4().hex[:8]}"
-                pod_manifest = client.V1Pod(
-                    metadata=client.V1ObjectMeta(
-                        name=warm_pod_name,
-                        labels={
-                            "app.kubernetes.io/managed-by": "outpost-cma",
-                            "outpost-cma/role": "warm-pool"
-                        }
-                    ),
-                    spec=client.V1PodSpec(
-                        containers=[
-                            client.V1Container(
-                                name="sandbox",
-                                image=settings.SANDBOX_IMAGE,
-                                command=["tail", "-f", "/dev/null"],
-                                resources=client.V1ResourceRequirements(
-                                    limits={"cpu": "0.5", "memory": "512Mi"},
-                                    requests={"cpu": "0.1", "memory": "128Mi"}
-                                )
-                            )
-                        ],
-                        restart_policy="Never"
-                    )
-                )
-                await self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
+            ready_warm_pods = [
+                p for p in pod_list.items 
+                if p.status.phase == "Running" and not p.metadata.deletion_timestamp
+            ]
+            
+            current_count = len(ready_warm_pods)
+            needed = target_pool_size - current_count
+            
+            if needed > 0:
+                logger.info(f"Warm pool reconciler: creating {needed} warm pod(s)...")
+                for _ in range(needed):
+                    await self._create_warm_pod()
         except Exception as e:
-            logger.error(f"Failed pool reconciliation: {e}")
+            logger.error(f"Failed to reconcile warm pod pool: {e}")
+
+    async def _create_warm_pod(self) -> str:
+        warm_id = uuid.uuid4().hex[:8]
+        pod_name = f"agent-sandbox-warm-{warm_id}"
+        
+        pod_manifest = client.V1Pod(
+            metadata=client.V1ObjectMeta(
+                name=pod_name,
+                labels={
+                    "app.kubernetes.io/managed-by": "outpost-cma",
+                    "outpost-cma/role": "warm-pool",
+                }
+            ),
+            spec=client.V1PodSpec(
+                containers=[
+                    client.V1Container(
+                        name="sandbox",
+                        image=settings.SANDBOX_IMAGE,
+                        image_pull_policy="IfNotPresent",
+                        command=["tail", "-f", "/dev/null"],
+                        resources=client.V1ResourceRequirements(
+                            limits={"cpu": "1", "memory": "1Gi"},
+                            requests={"cpu": "0.2", "memory": "256Mi"}
+                        ),
+                        security_context=client.V1SecurityContext(
+                            allow_privilege_escalation=False,
+                            run_as_user=1000,
+                            run_as_group=1000
+                        )
+                    )
+                ],
+                restart_policy="Never",
+                termination_grace_period_seconds=5
+            )
+        )
+
+        await self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
+        return pod_name
 
     async def _claim_warm_pod(self, session_id: str) -> Optional[str]:
         try:
-            pods = await self.v1.list_namespaced_pod(
+            pod_list = await self.v1.list_namespaced_pod(
                 namespace=self.namespace,
                 label_selector="outpost-cma/role=warm-pool"
             )
-            running_pods = [p for p in pods.items if p.status.phase == "Running"]
-            if not running_pods:
-                return None
-                
-            target_pod = running_pods[0]
-            pod_name = target_pod.metadata.name
-            
-            patch = {
-                "metadata": {
-                    "labels": {
-                        "outpost-cma/role": "sandbox",
-                        "outpost-cma/session-id": session_id
+            for pod in pod_list.items:
+                if pod.status.phase == "Running" and not pod.metadata.deletion_timestamp:
+                    pod_name = pod.metadata.name
+                    # Re-label warm pod for assigned session
+                    body = {
+                        "metadata": {
+                            "labels": {
+                                "outpost-cma/role": "sandbox",
+                                "outpost-cma/session-id": session_id
+                            }
+                        }
                     }
-                }
-            }
-            await self.v1.patch_namespaced_pod(
-                name=pod_name,
-                namespace=self.namespace,
-                body=patch
-            )
-            return pod_name
+                    await self.v1.patch_namespaced_pod(
+                        name=pod_name,
+                        namespace=self.namespace,
+                        body=body
+                    )
+                    logger.info(f"Claimed warm pod {pod_name} for session {session_id}")
+                    return pod_name
         except Exception as e:
             logger.error(f"Failed to claim warm pod: {e}")
-            return None
+            
+        return None

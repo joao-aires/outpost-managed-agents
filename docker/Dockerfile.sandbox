@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+# Install system dependencies & CLI utilities for agent harnesses
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    git \
+    curl \
+    tar \
+    gzip \
+    jq \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root agent user and working directories
+RUN useradd -m -s /bin/bash agent
+WORKDIR /workspace
+
+RUN mkdir -p /workspace/.skills /workspace/.tools /home/agent/.claude /home/agent/.opencode /home/agent/.cursor /home/agent/.aider \
+    && chown -R agent:agent /workspace /home/agent
+
+USER agent
+
+# Default entrypoint
+CMD ["tail", "-f", "/dev/null"]

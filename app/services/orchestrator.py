@@ -55,6 +55,42 @@ class AgentOrchestrator:
         self.history_store: Dict[str, List[Dict[str, Any]]] = {}
         self.harness_initialized: Dict[str, bool] = {}
 
+    async def _call_llm(self, model: str, system_prompt: str, history: list, tools: list):
+        base_url = getattr(settings, "LLM_BASE_URL", "") or ""
+        provider = getattr(settings, "LLM_PROVIDER", "").lower()
+        
+        if "11434" in base_url or provider == "ollama":
+            from app.services.llm_adapter import OllamaLLMAdapter
+            adapter = OllamaLLMAdapter(base_url=base_url or "http://127.0.0.1:11434")
+            raw_msg = await adapter.create_message(
+                model=model,
+                messages=history,
+                system=system_prompt,
+                tools=tools
+            )
+
+            class Block:
+                def __init__(self, d):
+                    self.type = d.get("type")
+                    self.text = d.get("text", "")
+                    self.id = d.get("id")
+                    self.name = d.get("name")
+                    self.input = d.get("input")
+
+            class AnthropicLikeResponse:
+                def __init__(self, raw):
+                    self.content = [Block(b) for b in raw.get("content", [])]
+
+            return AnthropicLikeResponse(raw_msg)
+        else:
+            return await self.client.messages.create(
+                model=model,
+                max_tokens=4000,
+                system=system_prompt,
+                messages=history,
+                tools=tools
+            )
+
     async def run_session_turn(self, session_id: str, message: str, db: AsyncSession):
         """
         Runs one interaction turn. Triggers the Agent Loop.
@@ -169,11 +205,10 @@ class AgentOrchestrator:
                         "input_schema": tool["input_schema"]
                     })
 
-                response = await self.client.messages.create(
+                response = await self._call_llm(
                     model=agent.model,
-                    max_tokens=4000,
-                    system=system_prompt,
-                    messages=history,
+                    system_prompt=system_prompt,
+                    history=history,
                     tools=formatted_tools
                 )
 
@@ -221,12 +256,12 @@ class AgentOrchestrator:
                             exec_res = await sandbox_driver.execute_command(pod_name, cmd)
                             result_text = f"stdout:\n{exec_res['stdout']}\nstderr:\n{exec_res['stderr']}\nexit_code: {exec_res['exit_code']}"
                         elif tool_name == "write_file":
-                            path = tool_input.get("path")
-                            content = tool_input.get("content", "")
+                            path = tool_input.get("path") or tool_input.get("filepath") or tool_input.get("file_path") or tool_input.get("filename") or "/workspace/output.txt"
+                            content = tool_input.get("content") or tool_input.get("text") or tool_input.get("code") or ""
                             success = await sandbox_driver.write_file(pod_name, path, content.encode("utf-8"))
-                            result_text = "File successfully written." if success else "Failed to write file."
+                            result_text = f"File {path} successfully written." if success else f"Failed to write file {path}."
                         elif tool_name == "read_file":
-                            path = tool_input.get("path")
+                            path = tool_input.get("path") or tool_input.get("filepath") or tool_input.get("file_path") or tool_input.get("filename") or "/workspace/output.txt"
                             file_content = await sandbox_driver.read_file(pod_name, path)
                             result_text = file_content.decode("utf-8", errors="replace")
                         else:

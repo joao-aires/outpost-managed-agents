@@ -8,9 +8,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "OutpostManagedAgents"
     API_V1_STR: str = "/v1"
     
-    # Anthropic / BYOB LLM Credentials
+    # LLM Credentials & Provider (Anthropic / Ollama / BYOB)
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "anthropic") # anthropic, ollama, custom
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./outpost_managed_agents.db")
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     # Kubernetes Configuration
     SANDBOX_DRIVER: str = os.getenv("SANDBOX_DRIVER", "direct") # direct, sigs-sandbox, or mock
     KUBERNETES_NAMESPACE: str = os.getenv("KUBERNETES_NAMESPACE", "agent-sandboxes")
-    SANDBOX_IMAGE: str = os.getenv("SANDBOX_IMAGE", "ubuntu:22.04")
+    SANDBOX_IMAGE: str = os.getenv("SANDBOX_IMAGE", "outpost-sandbox:latest")
     WARM_POOL_SIZE: int = int(os.getenv("WARM_POOL_SIZE", "3"))
     
     # Egress Control
