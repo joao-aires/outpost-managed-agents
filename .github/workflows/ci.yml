@@ -1,22 +1,22 @@
-name: Outpost CI/CD Pipeline
+name: CI — Fast Unit & Integration Checks
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, feat/*, fix/* ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
   test:
-    name: Run Unit, Integration & E2E Tests
+    name: Unit & Integration Tests
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Codebase
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
@@ -26,14 +26,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install Dependencies
-        run: |
-          uv venv
-          uv pip install -r requirements.txt
-          uv pip install pytest pytest-asyncio httpx greenlet uvicorn
+        run: uv sync
 
-      - name: Run Test Suite (Unit, Integration, E2E)
-        env:
-          SANDBOX_DRIVER: "mock"
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      - name: Run Fast Unit & Integration Tests (Excluding E2E & Benchmarks)
+        run: uv run pytest -m "not e2e and not benchmark" -v
+
+      - name: Lint & Helm Template Check
         run: |
-          uv run pytest -v
+          helm lint charts/outpost-managed-agents
+          helm template outpost-test charts/outpost-managed-agents

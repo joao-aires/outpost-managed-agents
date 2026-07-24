@@ -7,7 +7,7 @@ from app.config import settings
 from app.services.sandbox.direct import DirectPodDriver
 from app.services.sandbox.factory import SandboxDriverFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
 
 @pytest.fixture(autouse=True)
 async def configure_real_k8s_and_ollama():
