@@ -1,0 +1,9 @@
+{{- if .Values.config.createSandboxNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.config.kubernetesNamespace | quote }}
+  labels:
+    {{- include "outpost.labels" . | nindent 4 }}
+    outpost-cma/role: "sandbox-namespace"
+{{- end }}
