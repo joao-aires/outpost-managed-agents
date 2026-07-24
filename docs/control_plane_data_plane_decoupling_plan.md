@@ -160,3 +160,37 @@ Integrate **RFC 8693 OAuth 2.0 Token Exchange**:
 | **Phase 2** | gRPC Tunnel Server | Build `DataPlaneTunnelManager` in Control Plane with mTLS authentication. |
 | **Phase 3** | Data Plane Runner Daemon | Package `outpost-runner` Helm chart for customer Kubernetes clusters. |
 | **Phase 4** | Cluster Management UI | Add Cluster Registration & Heartbeat Dashboard to Outpost Console. |
+
+---
+
+## 🌟 6 Critical Enhancements for 100% Provider Agnosticism & Air-Gapped On-Prem Support
+
+To ensure Outpost runs seamlessly across **AWS EKS, GCP GKE, Azure AKS, OpenShift, VMware Tanzu, and Air-Gapped On-Premises Bare-Metal**, six structural enhancements are specified:
+
+### 1. Air-Gapped & Zero-Internet Support
+* **Private Container Registry Mirroring**: All Helm charts (`values.yaml`) support local private registry mirrors (`image.registry: "harbor.internal.corp/outpost"`), eliminating dependencies on Docker Hub.
+* **On-Prem Local Inference Integration**: Natively connects to local on-prem GPU inference clusters (vLLM, Ollama, TGI, Triton) over private networks without outbound internet calls.
+
+### 2. Pluggable Compute Drivers (K8s Pods, MicroVMs, & vClusters)
+Abstract the Data Plane compute runtime beyond standard K8s pods:
+```python
+class DataPlaneComputeDriver(ABC):
+    # Driver 1: KubernetesPodDriver (EKS, GKE, AKS, OpenShift, k3s)
+    # Driver 2: FirecrackerMicroVMDriver (Bare-metal AWS EC2 / On-Prem KVM)
+    # Driver 3: vClusterDriver (Multi-tenant isolated virtual Kubernetes clusters)
+```
+
+### 3. CSI-Agnostic Workspace Storage Manager
+* **Mode A (Zero-CSI Fallback)**: Uses `emptyDir` + Local Node Tool Cache (ADR 0001). Works on **100% of Kubernetes clusters** without needing specific storage drivers.
+* **Mode B (Enterprise CSI CoW)**: Integrates K8s `VolumeSnapshot` APIs for instant Copy-on-Write workspace branching on AWS EBS, GCP PD, Ceph, Rook, or Longhorn.
+
+### 4. Heterogeneous Identity & Secret Provider Integration
+Supports native cloud & on-prem secret engines:
+* **Cloud**: AWS IRSA / EKS Pod Identity, GCP Workload Identity, Azure Workload Identity.
+* **On-Prem**: HashiCorp Vault, CyberArk, or Kubernetes Native Secrets.
+
+### 5. Multi-Region & Multi-Cloud Fallback Routing
+If a customer's primary GKE cluster experiences node pressure or downtime, the Control Plane automatically fails over session creation to a secondary AWS EKS or On-Prem OpenShift cluster.
+
+### 6. Compliance & Audit Log Export
+Streams raw eBPF network logs and tool execution events to enterprise SIEMs (Splunk, Datadog, Elastic, IBM QRadar) over syslog/gRPC.
